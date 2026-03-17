@@ -1,6 +1,6 @@
 """
 Design Brief Bot — Telegram бот-помощник дизайнера
-Собирает бриф, анализирует через Claude API, генерирует мудборд
+Собирает бриф, анализирует, генерирует мудборд
 """
 
 import asyncio
@@ -122,13 +122,13 @@ STATE_ORDER = list(QUESTIONS.keys())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "👋 Привет! Я *Design Brief Bot* — помогу тебе и дизайнеру создать сильный визуальный стиль.\n\n"
+        "Привет! Я *Design Brief Bot* — помогу тебе и дизайнеру создать сильный визуальный стиль.\n\n"
         "Я задам 20 вопросов о твоём бренде, а потом:\n"
         "• Проанализирую бренд, ЦА и конкурентов\n"
         "• Составлю текстовый мудборд с концепцией\n"
         "• Дам направление по цветам, типографике и образам\n"
         "• Создам PDF-бриф для дизайнера\n\n"
-        "Это займёт около 10 минут. Начнём? 🚀",
+        "Это займёт около 10 минут. Начнём?",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="Начать бриф ✦")]],
@@ -161,10 +161,10 @@ async def handle_answer(message: types.Message, state: FSMContext, current_state
 
     # Показываем блочные разделители
     block_intros = {
-        2: "📦 *Блок 2: Целевая аудитория*\n",
-        4: "🏆 *Блок 3: Конкуренты*\n",
-        5: "🎨 *Блок 4: Визуальные предпочтения*\n",
-        7: "🔮 *Блок 5: Ассоциации и характер бренда*\n",
+        2: "*Блок 2: Целевая аудитория*\n",
+        4: "*Блок 3: Конкуренты*\n",
+        5: "*Блок 4: Визуальные предпочтения*\n",
+        7: "*Блок 5: Ассоциации и характер бренда*\n",
     }
 
     if current_index + 1 < len(STATE_ORDER):
@@ -180,9 +180,9 @@ async def handle_answer(message: types.Message, state: FSMContext, current_state
         # Все вопросы заданы — запускаем анализ
         await state.set_state(Brief.processing)
         processing_msg = await message.answer(
-            "✨ Отлично! Собрал все ответы.\n\n"
-            "🔍 Анализирую бренд, ЦА и конкурентов...\n"
-            "📐 Составляю концепцию мудборда...\n\n"
+            "Отлично! Собрал все ответы.\n\n"
+            "Анализирую бренд, ЦА и конкурентов...\n"
+            "Составляю концепцию мудборда...\n\n"
             "_Это займёт 30–60 секунд_",
             parse_mode="Markdown"
         )
@@ -208,7 +208,7 @@ async def handle_answer(message: types.Message, state: FSMContext, current_state
                 )
 
             await message.answer(
-                "✅ Готово! Мудборд и бриф составлены.\n\n"
+                "Готово! Мудборд и бриф составлены.\n\n"
                 "Поделитесь этим PDF с дизайнером — у него будет полная картина.\n\n"
                 "Хотите начать заново? /restart",
                 reply_markup=ReplyKeyboardMarkup(
@@ -220,7 +220,7 @@ async def handle_answer(message: types.Message, state: FSMContext, current_state
         except Exception as e:
             logger.error(f"Error during analysis: {e}")
             await message.answer(
-                "❌ Произошла ошибка при анализе. Попробуйте /restart\n\n"
+                "Произошла ошибка при анализе. Попробуйте /restart\n\n"
                 f"Детали: {str(e)[:200]}"
             )
 
@@ -244,6 +244,20 @@ async def new_brief(message: types.Message, state: FSMContext):
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 async def main():
+    import os
+    from aiohttp import web
+
+    async def health(request):
+        return web.Response(text="ok")
+
+    app = web.Application()
+    app.router.add_get("/", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
     logger.info("Starting Design Brief Bot...")
     await dp.start_polling(bot)
 
