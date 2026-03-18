@@ -2,12 +2,10 @@ import asyncio
 import logging
 import os
 from aiohttp import web
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 
 import config
 from gemini_analyzer import analyze_brief
@@ -15,8 +13,9 @@ from gemini_analyzer import analyze_brief
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-bot = Bot(token=config.TELEGRAM_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
+bot = Bot(token=config.TELEGRAM_TOKEN, parse_mode="Markdown")
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
 
 
 class Brief(StatesGroup):
@@ -45,118 +44,101 @@ QUESTIONS = [
     "10/10 ✦ Если бы бренд был человеком — кто это? Характер, стиль, профессия.",
 ]
 
-FIELDS = ["brand", "product", "mission", "audience", "pain", "competitors", "visual_like", "mood", "words", "person"]
-STATES = [Brief.q1, Brief.q2, Brief.q3, Brief.q4, Brief.q5, Brief.q6, Brief.q7, Brief.q8, Brief.q9, Brief.q10]
 
-
-@dp.message(Command("start"))
+@dp.message_handler(commands=["start", "restart"])
 async def cmd_start(message: types.Message, state: FSMContext):
-    await state.clear()
+    await state.finish()
     await message.answer(
         "✦ *Brandboard*\n\n"
         "Помогу превратить идею бренда в чёткую визуальную концепцию.\n\n"
         "Отвечу на 10 вопросов — и получишь готовый мудборд с палитрой, типографикой и образами.\n\n"
-        "Поехали?",
-        parse_mode="Markdown",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Начать ✦")]],
-            resize_keyboard=True
-        )
+        "Нажми кнопку чтобы начать 👇",
+        reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add("Начать ✦")
     )
 
 
-@dp.message(F.text == "Начать ✦")
-@dp.message(F.text == "Начать заново ✦")
+@dp.message_handler(lambda m: m.text in ["Начать ✦", "Начать заново ✦"])
 async def start_brief(message: types.Message, state: FSMContext):
-    await state.clear()
-    await state.set_state(Brief.q1)
-    await message.answer(QUESTIONS[0], reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
+    await state.finish()
+    await Brief.q1.set()
+    await message.answer(QUESTIONS[0], reply_markup=types.ReplyKeyboardRemove())
 
 
-@dp.message(Command("restart"))
-async def cmd_restart(message: types.Message, state: FSMContext):
-    await state.clear()
-    await cmd_start(message, state)
-
-
-async def next_question(message: types.Message, state: FSMContext, current_index: int, answer: str):
-    field = FIELDS[current_index]
-    await state.update_data(**{field: answer})
-
-    next_index = current_index + 1
-
-    if next_index < len(QUESTIONS):
-        next_state = STATES[next_index]
-        await state.set_state(next_state)
-        await message.answer(QUESTIONS[next_index], parse_mode="Markdown")
-    else:
-        await state.set_state(None)
-        await message.answer("⏳ Анализирую бренд и составляю концепцию...\n_Это займёт около 30 секунд_", parse_mode="Markdown")
-        data = await state.get_data()
-        try:
-            result = await analyze_brief(data)
-            await message.answer(result, parse_mode="Markdown")
-            await message.answer(
-                "Хочешь начать заново или изменить ответы?",
-                reply_markup=ReplyKeyboardMarkup(
-                    keyboard=[[KeyboardButton(text="Начать заново ✦")]],
-                    resize_keyboard=True
-                )
-            )
-        except Exception as e:
-            logger.error(f"Error: {e}")
-            await message.answer(
-                "❌ Что-то пошло не так. Попробуй ещё раз — /restart\n\n"
-                f"Ошибка: {str(e)[:200]}"
-            )
-        await state.clear()
-
-
-@dp.message(StateFilter(Brief.q1))
+@dp.message_handler(state=Brief.q1)
 async def ans1(message: types.Message, state: FSMContext):
-    await next_question(message, state, 0, message.text)
+    await state.update_data(brand=message.text)
+    await Brief.q2.set()
+    await message.answer(QUESTIONS[1])
 
-@dp.message(StateFilter(Brief.q2))
+@dp.message_handler(state=Brief.q2)
 async def ans2(message: types.Message, state: FSMContext):
-    await next_question(message, state, 1, message.text)
+    await state.update_data(product=message.text)
+    await Brief.q3.set()
+    await message.answer(QUESTIONS[2])
 
-@dp.message(StateFilter(Brief.q3))
+@dp.message_handler(state=Brief.q3)
 async def ans3(message: types.Message, state: FSMContext):
-    await next_question(message, state, 2, message.text)
+    await state.update_data(mission=message.text)
+    await Brief.q4.set()
+    await message.answer(QUESTIONS[3])
 
-@dp.message(StateFilter(Brief.q4))
+@dp.message_handler(state=Brief.q4)
 async def ans4(message: types.Message, state: FSMContext):
-    await next_question(message, state, 3, message.text)
+    await state.update_data(audience=message.text)
+    await Brief.q5.set()
+    await message.answer(QUESTIONS[4])
 
-@dp.message(StateFilter(Brief.q5))
+@dp.message_handler(state=Brief.q5)
 async def ans5(message: types.Message, state: FSMContext):
-    await next_question(message, state, 4, message.text)
+    await state.update_data(pain=message.text)
+    await Brief.q6.set()
+    await message.answer(QUESTIONS[5])
 
-@dp.message(StateFilter(Brief.q6))
+@dp.message_handler(state=Brief.q6)
 async def ans6(message: types.Message, state: FSMContext):
-    await next_question(message, state, 5, message.text)
+    await state.update_data(competitors=message.text)
+    await Brief.q7.set()
+    await message.answer(QUESTIONS[6])
 
-@dp.message(StateFilter(Brief.q7))
+@dp.message_handler(state=Brief.q7)
 async def ans7(message: types.Message, state: FSMContext):
-    await next_question(message, state, 6, message.text)
+    await state.update_data(visual_like=message.text)
+    await Brief.q8.set()
+    await message.answer(QUESTIONS[7])
 
-@dp.message(StateFilter(Brief.q8))
+@dp.message_handler(state=Brief.q8)
 async def ans8(message: types.Message, state: FSMContext):
-    await next_question(message, state, 7, message.text)
+    await state.update_data(mood=message.text)
+    await Brief.q9.set()
+    await message.answer(QUESTIONS[8])
 
-@dp.message(StateFilter(Brief.q9))
+@dp.message_handler(state=Brief.q9)
 async def ans9(message: types.Message, state: FSMContext):
-    await next_question(message, state, 8, message.text)
+    await state.update_data(words=message.text)
+    await Brief.q10.set()
+    await message.answer(QUESTIONS[9])
 
-@dp.message(StateFilter(Brief.q10))
+@dp.message_handler(state=Brief.q10)
 async def ans10(message: types.Message, state: FSMContext):
-    await next_question(message, state, 9, message.text)
+    await state.update_data(person=message.text)
+    await state.finish()
+    await message.answer("⏳ Анализирую бренд и составляю концепцию...\n_Это займёт около 30 секунд_")
+    data = await state.get_data()
+    try:
+        result = await analyze_brief(data)
+        await message.answer(result)
+        await message.answer(
+            "Хочешь начать заново?",
+            reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add("Начать заново ✦")
+        )
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        await message.answer(f"❌ Ошибка. Попробуй /restart\n\n{str(e)[:300]}")
 
 
 async def main():
     async def health(request):
         return web.Response(text="ok")
-
     app = web.Application()
     app.router.add_get("/", health)
     runner = web.AppRunner(app)
@@ -164,9 +146,9 @@ async def main():
     port = int(os.environ.get("PORT", 8080))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-
     logger.info("Starting Brandboard Bot...")
-    await dp.start_polling(bot)
+    from aiogram import executor
+    await dp.start_polling()
 
 
 if __name__ == "__main__":
